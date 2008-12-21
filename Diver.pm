@@ -4,8 +4,8 @@ use strict;
 require Exporter;
 use vars qw( $VERSION @EXPORT_OK );
 BEGIN {
-    $VERSION= 1.00_02;
-    @EXPORT_OK= qw( Dive DiveRef DiveError DiveDie DiveClear );
+    $VERSION= 1.01_01;
+    @EXPORT_OK= qw( Dive DiveRef DiveVal DiveError DiveDie DiveClear );
     *import= \&Exporter::import;
     *isa= \&UNIVERSAL::isa;
 }
@@ -88,7 +88,11 @@ sub Dive
                 ||  $#$ref < $key;
             $ref= $ref->[$key];
         } elsif(  eval { exists $ref->{$key} }  ) {
-            $ref= $ref->{$key};
+            if(  eval { my $x= $$key; 1 }  ) {
+                $ref= $ref->{$$key};
+            } else {
+                $ref= $ref->{$key};
+            }
         } elsif(  eval { my $x= $ref->{$key}; 1 }  ) {
             return  _Error( $ref, \$key, "Key not present in hash" );
         } else {
@@ -96,6 +100,12 @@ sub Dive
         }
     }
     return $ref;
+}
+
+
+sub DiveVal :lvalue
+{
+    ${ DiveRef( @_ ) };
 }
 
 
@@ -116,17 +126,17 @@ sub DiveRef
             } else {
                 $sv= \[ $$sv->( @$key ) ];
             }
+        } elsif(    eval { my $x= $$key; 1 }
+                and     ! defined($$sv)
+                    ||  eval { my $x= $$sv->{0}; 1 }
+        ) {
+            $sv= \$$sv->{$$key};
         } elsif(    $key =~ /^-?\d+$/
                 and     ! defined($$sv)
                     ||  eval { my $x= $$sv->[0]; 1 }
         ) {
             $sv= \$$sv->[$key];
         } else {
-	    BEGIN {
-	    	if(  eval { require warnings; 1 }  ) {
-		    warnings->unimport( 'deprecated' );
-		}
-	    }
             $sv= \$$sv->{$key};
         }
     }
@@ -137,6 +147,7 @@ sub DiveRef
 'Data::Diver';
 
 __END__
+# Cheap pod2pm (convert POD to PerlMonk's HTMLish)
 my $p= 0;
 my $c= 0;
 while( <> ) {
@@ -178,9 +189,16 @@ while( <> ) {
     print;
 }
 __END__
+
 =head1 NAME
 
 Data::Diver - Simple, ad-hoc access to elements of deeply nested structures
+
+=head1 SUMMARY
+
+Data::Diver provides the Dive() and DiveVal() functions for ad-hoc
+access to elements of deeply nested data structures, and the
+DiveRef(), DiveError(), DiveClear(), and DiveDie() support functions.
 
 =head1 SYNOPSIS
 
@@ -224,6 +242,21 @@ Data::Diver - Simple, ad-hoc access to elements of deeply nested structures
     # die()s because "other" isn't a valid number:
     $ref= DiveRef( $root, qw( top other ... ) );
 
+    # Does: $root->{num}{1}{2}= 3;
+    # (Autovivifies hashes despite the numeric keys.)
+    DiveVal( $root, \( qw( num 1 2 ) ) ) = 3;
+    # Same thing:
+    ${ DiveRef( $root, 'num', \1, \2 ) } = 3;
+
+    # Retrieves above value, $value= 3:
+    $value= DiveVal( $root, 'num', \1, \2 );
+    # Same thing:
+    $value= ${ DiveRef( $root,  \( qw( num 1 2 ) ) ) };
+
+    # Tries to do $root->{top}{1} and dies
+    # because $root->{top} is an array reference:
+    DiveRef( $root, 'top', \1 );
+
     # To only autovivify at the last step:
     $ref= DiveRef(
         Dive( $root, qw( top 1 second key 3 three ) ),
@@ -237,11 +270,8 @@ Data::Diver - Simple, ad-hoc access to elements of deeply nested structures
 
 =head1 DESCRIPTION
 
-Data::Diver provides the Dive() and DiveRef() functions for ad-hoc
-access to elements of deeply nested data structures, and the
-DiveError(), DiveClear(), and DiveDie() support functions.
-
-Data::Diver does C<use strict;> and so will not use symbolic references.  That is, a simple string can never be used as a reference.
+Note that Data::Diver does C<use strict;> and so will not use symbolic
+references.  That is, a simple string can never be used as a reference.
 
 =head2 Dive
 
@@ -275,18 +305,27 @@ returned and one C<undef>, C<( undef )>, being returned:
         warn "\$hashOfHashes{first}{second} exists but is undefined.\n";
     }
 
+=head2 DiveVal
+
+    $val= DiveVal( $root, @ListOfKeys );
+
+    DiveVal( $root, @ListOfKeys )= $val;
+
+DiveVal() is very much like Dive() except that it autovivifies if it
+can, dies if it can't, and is an LValue subroutine.  So you can assign
+to DiveVal() and the
+dereferenced element will be modified.  You can also take a reference
+to the call to DiveVal() or do anything else that you can do with a
+regular scalar variable.
+
+If $root is undefined, then DiveVal() immediately returns C<( undef )>
+[without overwriting C<DiveError()>].  This is for the special case of
+using C<DiveVal( Dive( ... ), ... )> because you want to only allow
+partial autovivifying.
+
 =head2 DiveRef
 
     $ref= DiveRef( $root, @ListOfKeys )
-
-DiveRef() is very much like Dive() except that it autovivifies if it
-can, dies if it can't, and returns a reference to the element rather
-than returning the element's value.
-
-If $root is undefined, then DiveRef() immediately returns C<( undef )>
-[without overwriting C<DiveError()>].  This is for the special case of
-using C<DiveRef( Dive( ... ), ... )> because you want to only allow
-partial autovivifying.
 
 =head2 Simple 'key' values
 
@@ -302,14 +341,17 @@ numeric values, you should use C<int()> to convert them to simple
 integers.
 
 To dereference a hash reference, you must give a 'key' value that
-is C<defined>.
+is C<defined> (or that is a reference to a scalar that will be used
+as the key).
 
 Note that all 'keys' that work for arrays also work for hashes.  If
 you have a reference that is overloaded such that it can both act
 as an array reference and as a hash reference [or, in the case of
-DiveRef(), if you have an undefined C<$ref> which can be autovivified
-into either type of reference], then numeric-looking key values cause
-an array dereference.
+DiveVal() and DiveRef(), if you have an undefined C<$ref> which can
+be autovivified into either type of reference], then numeric-looking
+key values cause an array dereference.  In the above cases, if you
+want to do a hash dereference, then you need to pass in a reference
+to the key.
 
 Note that undefined keys are reserved for a special meaning
 discussed in L</Advanced 'key' values> further down.  That section
@@ -380,6 +422,29 @@ to tell you why.
 
 Otherwise the scalar ref is deferenced (C<$$ref>) and we continue on to
 the next element of @ListOfKeys.
+
+=item a reference to a scalar
+
+This means that you expect C<$ref> to be a reference to a hash and
+you want to dereference it using C<$$key> as the key.
+
+This is most useful for when you want to use hash keys that match
+C<m/^-?\d+$/>.  Note that C<\( listOfScalars )> will give you a list
+of references to those scalars so you can often just add C<\(> and C<)>
+around your list of keys if you only want to do hash dereferencing:
+
+    DiveVal( $ref, \( 1, -5, qw< 00 01 >, list(), 1-9, 0xFF ) )= 9;
+
+But, if your argument list of key values is build out of at least one
+array and any other item, then it won't work since:
+
+    \( @a, $b, 9 ) is ( \@a, \$b, \9 )
+
+so you'll need to either wrap each array in additional parens or use C<map>:
+
+    \( (@a), $b, (@c), 9 )
+
+    map \$_, @a, $b, @c, 9
 
 =item C<$key =~ m/^-?\d+$/>
 

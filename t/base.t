@@ -12,7 +12,7 @@ BEGIN {
 use Test qw( plan ok skip );
 
 sub Ok($;$$) {
-    @_= reverse @_;
+    @_= @_ < 3 ? reverse @_ : @_[1,0,2];
     goto &ok;
 }
 
@@ -26,12 +26,12 @@ sub Skip($$;$$) {
 
 BEGIN {
     $|++;
-    plan( tests => 85 );
+    plan( tests => 92 );
     require Data::Diver;
     Ok( 1 );
 }
 
-use Data::Diver qw( Dive DiveRef DiveDie DiveError DiveClear );
+use Data::Diver qw( Dive DiveRef DiveVal DiveDie DiveError DiveClear );
 
 Ok( 1 );
 
@@ -54,9 +54,9 @@ Ok( 1 );
     };
 
 Ok( 0, ()= DiveError() );
-Ok( 0, eval { ()= DiveDie() } );
-Ok( 1, eval { ()= DiveDie(undef) } );
-Ok( 'x', eval { DiveDie('x') } );
+Ok( 0, eval { ()= DiveDie() }, $@ );
+Ok( 1, eval { ()= DiveDie(undef) }, $@ );
+Ok( 'x', eval { DiveDie('x') }, $@ );
 
     # Sets $value to 'yes'
     # ( $root->{top}[1]{second}{key}[3]{three}{exists} ):
@@ -70,7 +70,7 @@ Skip(
     'yes', $$value );
 Ok( 'yes', eval {
     DiveDie( $root, qw( top 1 second key 3 three exists ) );
-} );
+}, $@ );
 
     # Sets $value to undef() because "missing" doesn't exist:
     $value= Dive( $root, qw( top 1 second key 3 three missing ) );
@@ -85,11 +85,11 @@ Skip(
     'missing', ${ ( DiveError() )[2] } );
 Ok( undef, eval { DiveDie(); 1 } );
 Ok( '/Key not present/', $@ );
-Ok( 1, eval { ()= DiveDie(undef) } );
-Ok( 'x', eval { DiveDie('x') } );
+Ok( 1, eval { ()= DiveDie(undef) }, $@ );
+Ok( 'x', eval { DiveDie('x') }, $@ );
 Ok( 'yes', eval {
     DiveDie( $root, qw( top 1 second key 3 three exists ) );
-} );
+}, $@ );
 
     # Sets $value to undef() because
     # $root->{top}[1]{second}{key}[4] is off the end of the array:
@@ -132,6 +132,35 @@ Ok( undef, eval {
     1
 } );
 
+    # Does: $root->{num}{1}{2}= 3;
+    # (Autovivifies hashes despite the numeric keys.)
+Ok( 3, eval {
+    DiveVal( $root, \( qw( num 1 2 ) ) ) = 3;
+}, $@ );
+Ok( 3, eval { $root->{num}{1}{2} }, $@ );
+    delete $root->{num};
+
+    # Same thing:
+Ok( 3, eval {
+    ${ DiveRef( $root, 'num', \1, \2 ) } = 3;
+}, $@ );
+Ok( 3, $root->{num}{1}{2} );
+
+    # Retrieves above value, $value= 3:
+Ok( 3, eval {
+    $value= DiveVal( $root, 'num', \1, \2 );
+}, $@ );
+    # Same thing:
+Ok( 3, eval {
+    $value= ${ DiveRef( $root,  \( qw( num 1 2 ) ) ) };
+}, $@ );
+
+    # Tries to do $root->{top}{1} and dies
+    # because $root->{top} is an array reference:
+Ok( undef, eval {
+    DiveRef( $root, 'top', \1 );
+}, $@ );
+
     # To only autovivify at the last step:
     $ref= DiveRef(
         Dive( $root, qw( top 1 second key 3 three ) ),
@@ -145,13 +174,13 @@ Ok( 1, eval {
         my( $nestedRef, $svKey, $errDesc )= DiveError();
         die "Couldn't dereference $nestedRef via $$svKey: $errDesc\n";
     }
-1 } );
+1 }, $@ );
 
 Ok( 'me too', $root->{top}[1]{second}{key}[3]{three}{missing} );
 
     DiveClear();
 Ok( 0, ()= DiveError() );
-Ok( 0, eval { ()= DiveDie() } );
+Ok( 0, eval { ()= DiveDie() }, $@ );
 
 # Data::Diver does C<use strict;>
 Ok( undef, eval { DiveRef( { foo=>'bar' }, 'foo', 'bar' ); 1 } );
@@ -229,7 +258,6 @@ Skip(
     undef, $$root );
 Ok( $root, $exists[0] );
 # [that will start out undefined but may quickly
-undef $root;
 @exists= DiveRef( \$root, undef, undef, 0 );
 Ok( 1, @exists );
 Ok( 'ARRAY', ref($$root) );
@@ -290,3 +318,4 @@ Note that the order of the above items is significant.  It represents
 the order in which cases are tested.  So an undefined $key will only
 be for derefencing a scalar reference and a numeric key will prefer
 to treat a reference as an array reference.
+
