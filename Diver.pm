@@ -300,7 +300,7 @@ returned and one C<undef>, C<( undef )>, being returned:
 
     my @exists= Dive( \%hashOfHashes, 'first', 'second' );
     if(  ! @exists  ) {
-        warn "\$hashOfHashes{first}{second} does not exists.\n";
+        warn "\$hashOfHashes{first}{second} does not exist.\n";
     } elsif(  ! defined $exists[0]  ) {
         warn "\$hashOfHashes{first}{second} exists but is undefined.\n";
     }
