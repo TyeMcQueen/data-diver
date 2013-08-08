@@ -4,7 +4,7 @@ use strict;
 require Exporter;
 use vars qw( $VERSION @EXPORT_OK );
 BEGIN {
-    $VERSION= 1.01_01;
+    $VERSION= 1.01_02;
     @EXPORT_OK= qw( Dive DiveRef DiveVal DiveError DiveDie DiveClear );
     *import= \&Exporter::import;
     *isa= \&UNIVERSAL::isa;
