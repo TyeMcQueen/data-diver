@@ -4,4 +4,14 @@ use ExtUtils::MakeMaker;
 WriteMakefile(
     'NAME'          => 'Data::Diver',
     'VERSION_FROM'  => 'Diver.pm', # finds $VERSION
+    META_MERGE => {
+        'meta-spec' => { version => 2 },
+        resources => {
+            repository => {
+                type => 'git',
+                url  => 'https://github.com/TyeMcQueen/data-diver.git',
+                web  => 'https://github.com/TyeMcQueen/data-diver',
+            },
+        },
+    },
 );
