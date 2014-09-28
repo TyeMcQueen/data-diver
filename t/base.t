@@ -26,7 +26,7 @@ sub Skip($$;$$) {
 
 BEGIN {
     $|++;
-    plan( tests => 92 );
+    plan( tests => 97 );
     require Data::Diver;
     Ok( 1 );
 }
@@ -268,6 +268,25 @@ Ok( $root, Dive( $root, 0, [], undef, undef ) );
 Ok( $root, Dive( $root, 0, [], 0, undef ) );
 Ok( $root, Dive( $root, 0, [undef], undef ) );
 Ok( $root, Dive( $root, 0, [undef], 0 ) );
+
+{
+    # scalar-ref keys always refer to hash-ref
+    my $root = {
+        H => { 1 => "one", 2 => "two" },
+        A => [ [0,1,2], { 3 => "three" } ]
+    };
+    Ok( "two", Dive( $root, \( "H", 2 ) ) );
+    Ok( "two", DiveVal( $root, \( "H", 2 ) ) );
+
+    # scalar-ref keys won't traverse array-refs
+    Ok( undef, Dive( $root, \( "A", 0, 2 ) ) );
+
+    # string keys traverse hash-refs and array-refs
+    Ok( 2, Dive( $root, "A", 0, 2 ) );
+
+    # mixed scalar-ref and string keys
+    Ok( "three", Dive( $root, \"A", 1, \3 ) );
+}
 
 __END__
 
