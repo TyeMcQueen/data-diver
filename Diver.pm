@@ -88,11 +88,9 @@ sub Dive
                 ||  $#$ref < $key;
             $ref= $ref->[$key];
         } elsif(  eval { exists $ref->{$key} }  ) {
-            if(  eval { my $x= $$key; 1 }  ) {
-                $ref= $ref->{$$key};
-            } else {
-                $ref= $ref->{$key};
-            }
+            $ref= $ref->{$key};
+        } elsif(  eval { my $x= $$key; exists $ref->{$x} }  ) {
+            $ref= $ref->{$$key};
         } elsif(  eval { my $x= $ref->{$key}; 1 }  ) {
             return  _Error( $ref, \$key, "Key not present in hash" );
         } else {
